@@ -7,5 +7,12 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+prost = "0.13.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 # 오직 wasm-bindgen 만을 남깁니다.
 wasm-bindgen = "0.2.84"
+
+# 빌드 시점에만 필요한 의존성을 별도로 관리
+[build-dependencies]
+tonic-build = "0.12.1"
