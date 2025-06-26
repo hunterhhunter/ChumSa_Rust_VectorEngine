@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+// Rust에서 생성될 코드의 네임스페이스(모듈명)를 지정
+package engine;
+
+// Document 메시지(구조체)를 정의
+// 필드 번호는 1부터 시작
+message Document {
+    uint64 id = 1;
+    repeated float vector = 2;
+}
