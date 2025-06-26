@@ -5,9 +5,12 @@ version = 4
 [[package]]
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 name = "RustVectorDB"
 version = "0.1.0"
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 name = "bumpalo"
@@ -139,6 +142,9 @@ dependencies = [
  "unicode-ident",
 ]
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
