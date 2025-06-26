@@ -1,6 +1,14 @@
 [package]
-name = "RustVectorDB"
+name = "rust_vector_engine"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
+<<<<<<< Updated upstream
+=======
+# 오직 wasm-bindgen 만을 남깁니다.
+wasm-bindgen = "0.2.84"
+>>>>>>> Stashed changes
