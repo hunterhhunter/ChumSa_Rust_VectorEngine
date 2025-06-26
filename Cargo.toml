@@ -8,6 +8,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+# 오직 wasm-bindgen 만을 남깁니다.
+wasm-bindgen = "0.2.84"
+>>>>>>> Stashed changes
 =======
 # 오직 wasm-bindgen 만을 남깁니다.
 wasm-bindgen = "0.2.84"

@@ -4,9 +4,12 @@ version = 4
 
 [[package]]
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 name = "RustVectorDB"
 version = "0.1.0"
 =======
+=======
+>>>>>>> Stashed changes
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -135,4 +138,7 @@ checksum = "1a05d73b933a847d6cccdda8f838a22ff101ad9bf93e33684f39c1f5f0eece3d"
 dependencies = [
  "unicode-ident",
 ]
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
