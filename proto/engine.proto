@@ -3,6 +3,13 @@ syntax = "proto3";
 // Rust에서 생성될 코드의 네임스페이스(모듈명)를 지정
 package engine;
 
+// 파일 전체를 감싸는 최상위 메세지
+message EngineState {
+    uint32 format_version = 1; // 파일 포맷 버전
+    
+    repeated Document documents = 10;
+}
+
 // Document 메시지(구조체)를 정의
 // 필드 번호는 1부터 시작
 message Document {
