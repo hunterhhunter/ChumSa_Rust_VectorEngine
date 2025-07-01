@@ -1,8 +1,9 @@
 use wasm_bindgen::prelude::*;
 
-// data_structures 모듈을 공개적으로 선언
+// 모듈을 공개적으로 선언
 pub mod models;
-pub mod distance;
+pub mod components;
+pub mod utils;
 
 
 // TypeScript에서 호출할 간단한 함수를 정의합니다.
