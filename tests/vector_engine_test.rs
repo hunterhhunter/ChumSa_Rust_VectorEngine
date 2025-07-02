@@ -1,5 +1,8 @@
+use rust_vector_engine::models::document::{EngineState, Document};
 use rust_vector_engine::models::{VectorEngine};
 use rust_vector_engine::utils::hash_vector;
+use prost::Message;
+
 
 /// vector엔진 생성자 테스트
 #[test]
@@ -187,4 +190,102 @@ fn test_vector_engine_search_after_cache_invalidation() {
 
     // 검증: 캐시의 낡은 데이터가 아닌, 새로 추가된 ID 2가 반환되어야 함
     assert_eq!(second_results[0].0, 2);
+}
+
+// 직렬화 - 역직렬화 테스트
+#[test]
+fn test_vector_engine_serialization() {
+    // 준비
+    let mut engine = VectorEngine::new(3);
+    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap();
+    engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap();
+    engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap();
+
+    // engine.save_to_bytes()를 통해 직렬화된 데이터를 얻음
+    let saved_bytes = engine.save_to_bytes().unwrap();
+
+    // 수동으로 비교 대상을 만듦 (순서는 다를 수 있음)
+    let mut expected_state = EngineState {
+        format_version: 1,
+        documents: vec![
+            Document { id: 1, vector: vec![1.0, 0.1, 0.2] },
+            Document { id: 2, vector: vec![0.1, 1.0, 0.3] },
+            Document { id: 3, vector: vec![0.2, 0.1, 1.0] },
+        ],
+    };
+
+    // 실행: 저장된 바이트를 다시 역직렬화
+    let mut reloaded_state = EngineState::decode(saved_bytes.as_slice()).unwrap();
+
+    // 검증: 내용을 비교하기 전, 두 벡터를 ID 기준으로 정렬
+    expected_state.documents.sort_by_key(|d| d.id);
+    reloaded_state.documents.sort_by_key(|d| d.id);
+
+    // 정렬된 두 documents 벡터의 내용이 같은지 비교
+    assert_eq!(expected_state.documents, reloaded_state.documents);
+}
+
+#[test]
+fn test_vector_engine_deserialization() {
+        // 준비
+    let mut engine = VectorEngine::new(3);
+    // 벡터들을 추가
+    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap(); // x축에 가까움
+    engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap(); // y축에 가까움
+    engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap(); // z축에 가까움
+
+    let state: EngineState = EngineState {
+        format_version: 1, 
+        documents: vec![
+                Document{
+                    id: 1,
+                    vector: vec![1.0, 0.1, 0.2]
+                }, 
+                Document{
+                    id: 2,
+                    vector: vec![0.1, 1.0, 0.3]
+                }, 
+                Document{
+                    id: 3,
+                    vector: vec![0.2, 0.1, 1.0]
+                }, 
+            ]
+        };
+
+    let mut buf: Vec<u8> =  Vec::new();
+    state.encode(&mut buf).unwrap();
+    
+    let serialized_engine = engine.save_to_bytes().unwrap();
+
+    let engine_v1 = VectorEngine::load_from_bytes(buf.as_slice(), 3).unwrap();
+    let engine_v2 = VectorEngine::load_from_bytes(serialized_engine.as_slice(), 3).unwrap();
+
+    assert_eq!(engine_v1.document_count(), engine_v2.document_count());
+    assert_eq!(engine_v1.dimension(), engine_v2.dimension());
+
+    let doc1 = engine_v1.documents();
+    let doc2 = engine_v2.documents();
+    assert_eq!(doc1.get(&1).unwrap(),  doc2.get(&1).unwrap());
+}
+
+#[test]
+fn test_vector_engine_round_trip() {
+    // 1. 준비 (Arrange): 원본 엔진을 만들고 데이터를 추가합니다.
+    let dimension = 3;
+    let mut original_engine = VectorEngine::new(dimension);
+    original_engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap();
+    original_engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap();
+
+    // 2. 실행 1 (Save): 원본 엔진을 바이트로 직렬화합니다.
+    let bytes = original_engine.save_to_bytes().unwrap();
+
+    // 3. 실행 2 (Load): 저장된 바이트로부터 새로운 엔진을 복원합니다.
+    let reloaded_engine = VectorEngine::load_from_bytes(&bytes, dimension).unwrap();
+
+    // 4. 검증 (Assert): 원본 엔진과 복원된 엔진의 상태가 완전히 동일한지 확인합니다.
+    assert_eq!(original_engine.dimension(), reloaded_engine.dimension());
+    assert_eq!(original_engine.document_count(), reloaded_engine.document_count());
+    
+    // documents getter를 사용하여 두 해시맵이 동일한지 직접 비교합니다.
+    assert_eq!(original_engine.documents(), reloaded_engine.documents());
 }
