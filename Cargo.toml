@@ -20,3 +20,10 @@ ahash = "0.8.12"
 # 빌드 시점에만 필요한 의존성을 별도로 관리
 [build-dependencies]
 tonic-build = "0.12.1"
+
+[dev-dependencies]
+criterion = "0.6.0"
+
+[[bench]]
+name = "engine_benchmark"
+harness = false
