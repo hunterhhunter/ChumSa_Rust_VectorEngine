@@ -70,5 +70,7 @@ impl<'a, K: std::hash::Hash + Eq, V> SearchCache<'a, K, V> {
     /// 캐시를 초기화합니다.
     pub fn clear(&mut self) {
         self.cache.clear();
+        self.stats.hits = 0;
+        self.stats.misses = 0;
     }
 }
