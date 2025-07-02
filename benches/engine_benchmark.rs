@@ -3,8 +3,8 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use rust_vector_engine::models::VectorEngine; 
 use std::hint::black_box; // criterion::black_box 대신 표준 라이브러리 사용
 
-const DIMENSION: usize = 128;
-const NUM_VECTORS: usize = 5000;
+const DIMENSION: usize = 1536;
+const NUM_VECTORS: usize = 1000;
 
 /// 벤치마크용 랜덤 데이터를 생성하는 함수
 fn generate_random_data(num: usize) -> Vec<(u64, Vec<f32>)> {
@@ -22,7 +22,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("VectorEngine Benchmarks");
 
     // --- 1. add_document 5,000개 실행 성능 측정 ---
-    group.bench_function("add_5000_docs", |b| {
+    group.bench_function("add_1000_docs", |b| {
         let data = generate_random_data(NUM_VECTORS);
         b.iter_with_setup(
             || VectorEngine::new(DIMENSION),
@@ -36,7 +36,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     });
 
     // --- 2. 5,000개 문서가 있는 상태에서 search 1회 실행 성능 측정 ---
-    group.bench_function("search_in_5000_docs", |b| {
+    group.bench_function("search_in_1000_docs", |b| {
         let mut engine = VectorEngine::new(DIMENSION);
         let data = generate_random_data(NUM_VECTORS);
         for (id, vector) in data {
