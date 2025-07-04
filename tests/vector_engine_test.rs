@@ -15,8 +15,8 @@ fn test_vector_engine_creation() {
 
     // 3. 테스트
     println!("{{engine.document_count()}}");
-    assert_eq!(engine.dimension(), dimension);
-    assert_eq!(engine.document_count(), 0);
+    assert_eq!(engine.get_dimension(), dimension);
+    assert_eq!(engine.get_document_count(), 0);
 }
 
 // VectorEngine add_document 함수 테스트
@@ -32,7 +32,7 @@ fn test_vector_engine_add_document_success() {
 
     // 벡터 입력
     let res = engine.add_document(id, input_vector);
-    assert_eq!(engine.document_count(), 1);
+    assert_eq!(engine.get_document_count(), 1);
     assert!(res.is_ok());
 }
 
@@ -54,7 +54,7 @@ fn test_vector_engine_add_document_dif_dimension() {
     assert!(res.is_err());
 
     // ! 실패 후 문서 개수가 여전히 0인지 확인
-    assert_eq!(engine.document_count(), 0);
+    assert_eq!(engine.get_document_count(), 0);
 }
 
 // VectorEngine Search 함수 테스트
@@ -111,17 +111,17 @@ fn test_vector_engine_search_miss() {
     let query_vector = vec![0.8, 0.8, 0.8];
 
     // 실행 전, 캐시는 비어있고 통계는 모두 0이어야 함
-    assert_eq!(engine.query_cache_len(), 0);
-    assert_eq!(engine.query_cache_stats().hits, 0);
-    assert_eq!(engine.query_cache_stats().misses, 0);
+    assert_eq!(engine.get_query_cache_len(), 0);
+    assert_eq!(engine.get_query_cache_stats().hits, 0);
+    assert_eq!(engine.get_query_cache_stats().misses, 0);
 
     // 2. 첫 번째 검색 (Act 1 - Cache Miss)
     let first_result = engine.search(&query_vector, 1).unwrap();
 
     // 3. 검증 (Assert 1)
     // 캐시 미스가 1 증가하고, 캐시에 결과가 저장되어야 함
-    assert_eq!(engine.query_cache_stats().misses, 1);
-    assert_eq!(engine.query_cache_len(), 1);
+    assert_eq!(engine.get_query_cache_stats().misses, 1);
+    assert_eq!(engine.get_query_cache_len(), 1);
     assert_eq!(first_result[0].0, 2); // 가장 가까운 벡터는 ID 2
 
     // 4. 두 번째 검색 (Act 2 - Cache Hit)
@@ -129,8 +129,8 @@ fn test_vector_engine_search_miss() {
 
     // 5. 검증 (Assert 2)
     // 캐시 히트가 1 증가하고, 미스는 그대로여야 함
-    assert_eq!(engine.query_cache_stats().hits, 1);
-    assert_eq!(engine.query_cache_stats().misses, 1);
+    assert_eq!(engine.get_query_cache_stats().hits, 1);
+    assert_eq!(engine.get_query_cache_stats().misses, 1);
     // 두 결과는 동일해야 함
     assert_eq!(first_result, second_result);
 }
@@ -160,7 +160,7 @@ fn test_vector_engine_search_with_k_larger_than_docs() {
     engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap(); // z축에 가까움
     
     // ID 1의 벡터와 가장 유사한 쿼리 벡터
-    let query_vector = vec![0.9, 0.0, 0.1];
+    let query_vector = vec![1.0, 0.0, 0.1];
 
     // 실행
     let results = engine.search(&query_vector, 3).unwrap();
@@ -227,7 +227,7 @@ fn test_vector_engine_serialization() {
 
 #[test]
 fn test_vector_engine_deserialization() {
-        // 준비
+    // 준비
     let mut engine = VectorEngine::new(3);
     // 벡터들을 추가
     engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap(); // x축에 가까움
@@ -260,11 +260,11 @@ fn test_vector_engine_deserialization() {
     let engine_v1 = VectorEngine::load_from_bytes(buf.as_slice(), 3).unwrap();
     let engine_v2 = VectorEngine::load_from_bytes(serialized_engine.as_slice(), 3).unwrap();
 
-    assert_eq!(engine_v1.document_count(), engine_v2.document_count());
-    assert_eq!(engine_v1.dimension(), engine_v2.dimension());
+    assert_eq!(engine_v1.get_document_count(), engine_v2.get_document_count());
+    assert_eq!(engine_v1.get_dimension(), engine_v2.get_dimension());
 
-    let doc1 = engine_v1.documents();
-    let doc2 = engine_v2.documents();
+    let doc1 = engine_v1.get_documents();
+    let doc2 = engine_v2.get_documents();
     assert_eq!(doc1.get(&1).unwrap(),  doc2.get(&1).unwrap());
 }
 
@@ -283,9 +283,85 @@ fn test_vector_engine_round_trip() {
     let reloaded_engine = VectorEngine::load_from_bytes(&bytes, dimension).unwrap();
 
     // 4. 검증 (Assert): 원본 엔진과 복원된 엔진의 상태가 완전히 동일한지 확인합니다.
-    assert_eq!(original_engine.dimension(), reloaded_engine.dimension());
-    assert_eq!(original_engine.document_count(), reloaded_engine.document_count());
+    assert_eq!(original_engine.get_dimension(), reloaded_engine.get_dimension());
+    assert_eq!(original_engine.get_document_count(), reloaded_engine.get_document_count());
     
     // documents getter를 사용하여 두 해시맵이 동일한지 직접 비교합니다.
-    assert_eq!(original_engine.documents(), reloaded_engine.documents());
+    assert_eq!(original_engine.get_documents(), reloaded_engine.get_documents());
+}
+
+#[test]
+fn test_vector_engine_delete_and_rebuild() {
+    // 1. 준비 벡터들을 추가
+    let mut engine = VectorEngine::new(3);
+    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap(); // x축에 가까움
+    engine.add_document(2, vec![0.2, 1.0, 1.0]).unwrap(); // y축에 가까움
+    engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap(); // z축에 가까움
+    
+    // 3번 벡터와 유사한 쿼리벡터 생성
+    let query_for_doc3 = vec![0.2, 0.1, 0.9];
+
+    // 2. 캐시 채우기
+    let initial_search = engine.search(&query_for_doc3, 1).unwrap();
+
+    assert_eq!(initial_search[0].0, 3); // 첫 검색 결과 ID 3
+    assert_eq!(engine.get_query_cache_len(), 1); // 캐시에 데이터 저장되었는지 확인
+
+    // 3. ID 3 문서 삭제
+    engine.delete_document(&3).unwrap();
+
+    // 4. 검증
+
+    // 4-1. HashMap 검증
+    assert_eq!(engine.get_document_count(), 2);
+    assert!(engine.get_documents().get(&3).is_none());
+
+    // 4-2. 캐시 초기화 검증
+    assert_eq!(engine.get_query_cache_len(), 0);
+
+    // 4-3 HNSW 인덱스 재구성 검증
+    let results_after_delete = engine.search(&query_for_doc3, 1).unwrap();
+    assert_ne!(results_after_delete[0].0, 3);
+    assert_eq!(results_after_delete[0].0, 2);
+
+}
+
+#[test]
+fn test_vector_engine_update_vector() {
+    // --- 1. 준비 (Arrange) ---
+    let dimension = 3;
+    let mut engine = VectorEngine::new(dimension);
+
+    let id_to_update = 2u64;
+    let old_vector = vec![0.1, 0.1, 0.1];
+    let new_vector = vec![0.9, 0.9, 0.9];
+
+    // 초기 데이터 추가
+    engine.add_document(1, vec![-0.5, -0.5, -0.5]).unwrap();
+    engine.add_document(id_to_update, old_vector.clone()).unwrap();
+
+    // 캐시를 미리 채워두기 위해 검색을 한 번 실행
+    let _ = engine.search(&vec![0.1, 0.1, 0.1], 1);
+    assert_eq!(engine.get_query_cache_len(), 1, "캐시가 채워져 있어야 합니다.");
+
+    // --- 2. 실행 (Act) ---
+    // ID 2의 문서를 new_vector로 업데이트합니다.
+    let update_result = engine.update_document(&id_to_update, new_vector.clone());
+
+    // --- 3. 검증 (Assert) ---
+    
+    // 3-1. 업데이트 성공 여부 확인
+    assert!(update_result.is_ok());
+
+    // 3-2. HashMap의 벡터가 실제로 new_vector로 바뀌었는지 확인
+    assert_eq!(engine.get_documents().get(&id_to_update).unwrap(), &new_vector);
+
+    // 3-3. 캐시가 비워졌는지 확인
+    assert_eq!(engine.get_query_cache_len(), 0, "업데이트 후 캐시는 비워져야 합니다.");
+
+    // 3-4. HNSW 인덱스가 재구성되었는지 확인 (동작으로 검증)
+    // new_vector와 유사한 쿼리로 검색했을 때, ID 2가 가장 가깝게 나와야 합니다.
+    let search_query = vec![0.1, -0.3, 1.0];
+    let search_result = engine.search(&search_query, 1).unwrap();
+    assert_eq!(search_result[0].0, id_to_update, "재구성된 인덱스는 새로운 벡터 기준으로 검색해야 합니다.");
 }

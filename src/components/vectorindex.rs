@@ -3,8 +3,7 @@ use hnsw_rs::prelude::*;
 
 pub type VectorIndex<'a> = Hnsw<'a, f32, DistCosine>;
 
-// 2. 생성자(new) 함수도 직관적으로 바뀌었습니다.
-pub fn create_vector_index() -> VectorIndex<'static> {
+pub fn create_vector_index<'b>() -> VectorIndex<'b> {
     // Hnsw::new(M, M0, ef_construction, capacity, distance_type)
     // M: 최대 이웃 수
     // M0: 기본 레이어 최대 이웃 수
