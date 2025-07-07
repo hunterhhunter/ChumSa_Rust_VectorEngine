@@ -45,7 +45,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let query_vector = generate_random_data(1).pop().unwrap().1;
         
         b.iter(|| {
-            engine.search(black_box(&query_vector), black_box(10))
+            engine.search(black_box(&query_vector), black_box(10), black_box(30))
         });
     });
 
@@ -66,7 +66,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             },
             // 준비된 엔진에서 update 메서드만 실행하여 시간 측정
             |mut engine| {
-                engine.update_document(black_box(&update_id), black_box(new_vector.clone())).unwrap();
+                engine.update_document(black_box(&update_id), black_box(new_vector.clone()));
             }
         );
     });
@@ -88,7 +88,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             },
             // 준비된 엔진에서 delete 메서드만 실행하여 시간 측정
             |mut engine| {
-                engine.delete_document(black_box(&delete_id)).unwrap();
+                engine.delete_document(black_box(&delete_id));
             }
         );
     });
