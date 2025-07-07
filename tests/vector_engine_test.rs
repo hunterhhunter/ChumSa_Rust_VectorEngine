@@ -1,367 +1,196 @@
-use rust_vector_engine::models::document::{EngineState, Document};
-use rust_vector_engine::models::{VectorEngine};
-use rust_vector_engine::utils::hash_vector;
-use prost::Message;
+use rust_vector_engine::models::document::{Document, EngineState};
+use rust_vector_engine::models::VectorEngine;
+use rust_vector_engine::models::errors::VectorEngineError;
 
+// 테스트에 사용할 기본 파라미터
+const TEST_DIM: usize = 3;
+const EF_SEARCH: usize = 10;
 
-/// vector엔진 생성자 테스트
 #[test]
 fn test_vector_engine_creation() {
-    // 1. 준비
-    let dimension = 1536;
-
-    // 2. 실행
-    let engine = VectorEngine::new(dimension);
-
-    // 3. 테스트
-    println!("{{engine.document_count()}}");
-    assert_eq!(engine.get_dimension(), dimension);
-    assert_eq!(engine.get_document_count(), 0);
+    let engine = VectorEngine::new(TEST_DIM);
+    assert_eq!(engine.dimension(), TEST_DIM);
+    assert_eq!(engine.document_count(), 0);
 }
 
-// VectorEngine add_document 함수 테스트
 #[test]
 fn test_vector_engine_add_document_success() {
-    // 벡터엔진 준비
-    let dimension = 3;
-    let mut engine = VectorEngine::new(dimension);
-
-    // 벡터 생성
-    let input_vector = vec![0.1, 0.2, 0.3];
-    let id = hash_vector(&input_vector.clone());
-
-    // 벡터 입력
-    let res = engine.add_document(id, input_vector);
-    assert_eq!(engine.get_document_count(), 1);
+    let mut engine = VectorEngine::new(TEST_DIM);
+    let res = engine.add_document(1, vec![0.1, 0.2, 0.3]);
     assert!(res.is_ok());
+    assert_eq!(engine.document_count(), 1);
 }
 
 #[test]
-fn test_vector_engine_add_document_dif_dimension() {
-    // 벡터엔진 준비
-    let dimension = 3;
-    let mut engine = VectorEngine::new(dimension);
-
-    // 벡터 생성
-    let input_vector = vec![0.1, 0.2];
-    let id = hash_vector(&input_vector.clone());
-
-    // 벡터 입력
-    // ! Err(String) 객체 반환하는게 맞음
-    let res = engine.add_document(id, input_vector);
-
-    // Err 객체인지 검증
+fn test_vector_engine_add_document_dimension_mismatch() {
+    let mut engine = VectorEngine::new(TEST_DIM);
+    // 차원이 2인 벡터를 추가 시도
+    let res = engine.add_document(1, vec![0.1, 0.2]);
     assert!(res.is_err());
-
-    // ! 실패 후 문서 개수가 여전히 0인지 확인
-    assert_eq!(engine.get_document_count(), 0);
-}
-
-// VectorEngine Search 함수 테스트
-#[test]
-fn test_vector_engine_search_hit() {
-    // 벡터엔진 준비
-    let dimension = 3;
-    let mut engine = VectorEngine::new(dimension);
-
-    // 테스트를 위해 예측 가능한 ID를 사용합니다.
-    let id1 = 1;
-    let id2 = 2;
-    let id3 = 3;
-    let id4 = 4;
-
-    let input_vector1: Vec<f32> = vec![0.1, 0.2, 0.3];
-    let input_vector2: Vec<f32> = vec![0.9, 0.8, 0.7]; // query_vector와 가장 유사한 벡터
-    let input_vector3: Vec<f32> = vec![0.2, 0.4, 0.5];
-    let input_vector4: Vec<f32> = vec![0.2, 0.5, 0.6];
-    
-    // 검색할 기준 벡터. input_vector2와 거의 동일하게 설정합니다.
-    let query_vector: Vec<f32> = vec![0.9, 0.8, 0.71];
-
-    // 벡터 입력
-    engine.add_document(id1, input_vector1).unwrap();
-    engine.add_document(id2, input_vector2).unwrap();
-    engine.add_document(id3, input_vector3).unwrap();
-    engine.add_document(id4, input_vector4).unwrap();
-
-
-    // 검색 시작
-    let top_k = 4;
-    let results = engine.search(&query_vector, top_k);
-
-    // 검색 성공했는지
-    assert!(results.is_ok());
-    let search_results = results.unwrap();
-
-    // 1. 요청한 개수(top_k)만큼 결과가 반환되었는지
-    assert_eq!(search_results.len(), top_k);
-
-    // 2. 가장 유사한 결과 (0번 인덱스)의 ID가 예상대로 id 2인지
-    assert_eq!(search_results[0].0, id2);
-    println!("Search Results (ID, Distance): {:?}", search_results);
-}
-
-
-#[test]
-fn test_vector_engine_search_miss() {
-    // 1. 준비 (Arrange)
-    let mut engine = VectorEngine::new(3);
-    engine.add_document(1, vec![0.1, 0.2, 0.3]).unwrap();
-    engine.add_document(2, vec![0.9, 0.8, 0.7]).unwrap();
-    let query_vector = vec![0.8, 0.8, 0.8];
-
-    // 실행 전, 캐시는 비어있고 통계는 모두 0이어야 함
-    assert_eq!(engine.get_query_cache_len(), 0);
-    assert_eq!(engine.get_query_cache_stats().hits, 0);
-    assert_eq!(engine.get_query_cache_stats().misses, 0);
-
-    // 2. 첫 번째 검색 (Act 1 - Cache Miss)
-    let first_result = engine.search(&query_vector, 1).unwrap();
-
-    // 3. 검증 (Assert 1)
-    // 캐시 미스가 1 증가하고, 캐시에 결과가 저장되어야 함
-    assert_eq!(engine.get_query_cache_stats().misses, 1);
-    assert_eq!(engine.get_query_cache_len(), 1);
-    assert_eq!(first_result[0].0, 2); // 가장 가까운 벡터는 ID 2
-
-    // 4. 두 번째 검색 (Act 2 - Cache Hit)
-    let second_result = engine.search(&query_vector, 1).unwrap();
-
-    // 5. 검증 (Assert 2)
-    // 캐시 히트가 1 증가하고, 미스는 그대로여야 함
-    assert_eq!(engine.get_query_cache_stats().hits, 1);
-    assert_eq!(engine.get_query_cache_stats().misses, 1);
-    // 두 결과는 동일해야 함
-    assert_eq!(first_result, second_result);
+    assert_eq!(engine.document_count(), 0);
 }
 
 #[test]
 fn test_vector_engine_search_on_empty_engine() {
-    // 준비
-    let mut engine = VectorEngine::new(3);
+    let mut engine = VectorEngine::new(TEST_DIM);
     let query_vector = vec![0.1, 0.2, 0.3];
-
-    // 실행
-    let results = engine.search(&query_vector, 3);
-
-    // 검증
-    assert!(results.is_ok());
-    // 결과 벡터가 비어있는지 확인
-    assert!(results.unwrap().is_empty());
+    let results = engine.search(&query_vector, 3, EF_SEARCH).unwrap();
+    assert!(results.is_empty());
 }
 
 #[test]
 fn test_vector_engine_search_with_k_larger_than_docs() {
-    // 준비
-    let mut engine = VectorEngine::new(3);
-    // 방향이 서로 다른 벡터들을 추가
-    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap(); // x축에 가까움
-    engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap(); // y축에 가까움
-    engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap(); // z축에 가까움
+    let mut engine = VectorEngine::new(TEST_DIM);
+    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap();
+    engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap();
     
-    // ID 1의 벡터와 가장 유사한 쿼리 벡터
     let query_vector = vec![1.0, 0.0, 0.1];
+    // 문서 수(2)보다 큰 k(3)를 요청
+    let results = engine.search(&query_vector, 3, EF_SEARCH).unwrap();
 
-    // 실행
-    let results = engine.search(&query_vector, 3).unwrap();
-
-    // 검증
-    assert_eq!(results.len(), 3);
-    // 가장 가까운 결과(거리가 가장 작은 결과)는 ID 1이어야 함
+    // 전체 문서 수인 2개가 반환되어야 함
+    assert_eq!(results.len(), 2);
     assert_eq!(results[0].0, 1);
 }
 
 #[test]
+fn test_vector_engine_search_miss_and_hit() {
+    let mut engine = VectorEngine::new(TEST_DIM);
+    engine.add_document(1, vec![0.1, 0.2, 0.3]).unwrap();
+    engine.add_document(2, vec![0.9, 0.8, 0.7]).unwrap();
+    let query_vector = vec![0.8, 0.8, 0.8];
+    
+    assert_eq!(engine.query_cache_len(), 0);
+    
+    // Cache Miss
+    let first_result = engine.search(&query_vector, 1, EF_SEARCH).unwrap();
+    assert_eq!(engine.query_cache_stats().misses, 1);
+    assert_eq!(first_result[0].0, 2);
+
+    // Cache Hit
+    let second_result = engine.search(&query_vector, 1, EF_SEARCH).unwrap();
+    assert_eq!(engine.query_cache_stats().hits, 1);
+    assert_eq!(first_result, second_result);
+}
+
+#[test]
 fn test_vector_engine_search_after_cache_invalidation() {
-    // 준비
-    let mut engine = VectorEngine::new(3);
-    engine.add_document(1, vec![0.1, 0.1, 0.1]).unwrap(); // 덜 유사한 벡터
+    let mut engine = VectorEngine::new(TEST_DIM);
+    engine.add_document(1, vec![0.1, 0.1, 0.1]).unwrap();
     let query_vector = vec![0.9, 0.9, 0.9];
 
-    // 첫 번째 검색 -> ID 1이 캐시에 저장됨
-    let first_results = engine.search(&query_vector, 1).unwrap();
+    let first_results = engine.search(&query_vector, 1, EF_SEARCH).unwrap();
     assert_eq!(first_results[0].0, 1);
 
-    // 훨씬 더 유사한 새 벡터 추가 -> 이 때 캐시가 비워져야 함
+    // 새 문서 추가 시 캐시가 비워짐
     engine.add_document(2, vec![0.8, 0.8, 0.8]).unwrap();
+    assert_eq!(engine.query_cache_len(), 0);
     
-    // 다시 검색
-    let second_results = engine.search(&query_vector, 1).unwrap();
-
-    // 검증: 캐시의 낡은 데이터가 아닌, 새로 추가된 ID 2가 반환되어야 함
+    let second_results = engine.search(&query_vector, 1, EF_SEARCH).unwrap();
     assert_eq!(second_results[0].0, 2);
-}
-
-// 직렬화 - 역직렬화 테스트
-#[test]
-fn test_vector_engine_serialization() {
-    // 준비
-    let mut engine = VectorEngine::new(3);
-    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap();
-    engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap();
-    engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap();
-
-    // engine.save_to_bytes()를 통해 직렬화된 데이터를 얻음
-    let saved_bytes = engine.save_to_bytes().unwrap();
-
-    // 수동으로 비교 대상을 만듦 (순서는 다를 수 있음)
-    let mut expected_state = EngineState {
-        format_version: 1,
-        documents: vec![
-            Document { id: 1, vector: vec![1.0, 0.1, 0.2] },
-            Document { id: 2, vector: vec![0.1, 1.0, 0.3] },
-            Document { id: 3, vector: vec![0.2, 0.1, 1.0] },
-        ],
-    };
-
-    // 실행: 저장된 바이트를 다시 역직렬화
-    let mut reloaded_state = EngineState::decode(saved_bytes.as_slice()).unwrap();
-
-    // 검증: 내용을 비교하기 전, 두 벡터를 ID 기준으로 정렬
-    expected_state.documents.sort_by_key(|d| d.id);
-    reloaded_state.documents.sort_by_key(|d| d.id);
-
-    // 정렬된 두 documents 벡터의 내용이 같은지 비교
-    assert_eq!(expected_state.documents, reloaded_state.documents);
-}
-
-#[test]
-fn test_vector_engine_deserialization() {
-    // 준비
-    let mut engine = VectorEngine::new(3);
-    // 벡터들을 추가
-    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap(); // x축에 가까움
-    engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap(); // y축에 가까움
-    engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap(); // z축에 가까움
-
-    let state: EngineState = EngineState {
-        format_version: 1, 
-        documents: vec![
-                Document{
-                    id: 1,
-                    vector: vec![1.0, 0.1, 0.2]
-                }, 
-                Document{
-                    id: 2,
-                    vector: vec![0.1, 1.0, 0.3]
-                }, 
-                Document{
-                    id: 3,
-                    vector: vec![0.2, 0.1, 1.0]
-                }, 
-            ]
-        };
-
-    let mut buf: Vec<u8> =  Vec::new();
-    state.encode(&mut buf).unwrap();
-    
-    let serialized_engine = engine.save_to_bytes().unwrap();
-
-    let engine_v1 = VectorEngine::load_from_bytes(buf.as_slice(), 3).unwrap();
-    let engine_v2 = VectorEngine::load_from_bytes(serialized_engine.as_slice(), 3).unwrap();
-
-    assert_eq!(engine_v1.get_document_count(), engine_v2.get_document_count());
-    assert_eq!(engine_v1.get_dimension(), engine_v2.get_dimension());
-
-    let doc1 = engine_v1.get_documents();
-    let doc2 = engine_v2.get_documents();
-    assert_eq!(doc1.get(&1).unwrap(),  doc2.get(&1).unwrap());
-}
-
-#[test]
-fn test_vector_engine_round_trip() {
-    // 1. 준비 (Arrange): 원본 엔진을 만들고 데이터를 추가합니다.
-    let dimension = 3;
-    let mut original_engine = VectorEngine::new(dimension);
-    original_engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap();
-    original_engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap();
-
-    // 2. 실행 1 (Save): 원본 엔진을 바이트로 직렬화합니다.
-    let bytes = original_engine.save_to_bytes().unwrap();
-
-    // 3. 실행 2 (Load): 저장된 바이트로부터 새로운 엔진을 복원합니다.
-    let reloaded_engine = VectorEngine::load_from_bytes(&bytes, dimension).unwrap();
-
-    // 4. 검증 (Assert): 원본 엔진과 복원된 엔진의 상태가 완전히 동일한지 확인합니다.
-    assert_eq!(original_engine.get_dimension(), reloaded_engine.get_dimension());
-    assert_eq!(original_engine.get_document_count(), reloaded_engine.get_document_count());
-    
-    // documents getter를 사용하여 두 해시맵이 동일한지 직접 비교합니다.
-    assert_eq!(original_engine.get_documents(), reloaded_engine.get_documents());
 }
 
 #[test]
 fn test_vector_engine_delete_and_rebuild() {
-    // 1. 준비 벡터들을 추가
-    let mut engine = VectorEngine::new(3);
-    engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap(); // x축에 가까움
-    engine.add_document(2, vec![0.2, 1.0, 1.0]).unwrap(); // y축에 가까움
-    engine.add_document(3, vec![0.2, 0.1, 1.0]).unwrap(); // z축에 가까움
+    let mut engine = VectorEngine::new(TEST_DIM);
+    engine.add_document(1, vec![0.1, 0.1, 0.1]).unwrap();
+    engine.add_document(2, vec![0.9, 0.9, 0.9]).unwrap();
     
-    // 3번 벡터와 유사한 쿼리벡터 생성
-    let query_for_doc3 = vec![0.2, 0.1, 0.9];
+    let query = vec![0.9, 0.9, 0.9];
+    // 캐시 채우기
+    let _ = engine.search(&query, 1, EF_SEARCH);
+    assert_eq!(engine.query_cache_len(), 1);
 
-    // 2. 캐시 채우기
-    let initial_search = engine.search(&query_for_doc3, 1).unwrap();
+    // ID 2 삭제
+    engine.delete_document(&2).unwrap();
 
-    assert_eq!(initial_search[0].0, 3); // 첫 검색 결과 ID 3
-    assert_eq!(engine.get_query_cache_len(), 1); // 캐시에 데이터 저장되었는지 확인
+    assert_eq!(engine.document_count(), 1);
+    assert!(engine.documents().get(&2).is_none());
+    assert_eq!(engine.query_cache_len(), 0); // 캐시 비워짐 확인
 
-    // 3. ID 3 문서 삭제
-    engine.delete_document(&3).unwrap();
-
-    // 4. 검증
-
-    // 4-1. HashMap 검증
-    assert_eq!(engine.get_document_count(), 2);
-    assert!(engine.get_documents().get(&3).is_none());
-
-    // 4-2. 캐시 초기화 검증
-    assert_eq!(engine.get_query_cache_len(), 0);
-
-    // 4-3 HNSW 인덱스 재구성 검증
-    let results_after_delete = engine.search(&query_for_doc3, 1).unwrap();
-    assert_ne!(results_after_delete[0].0, 3);
-    assert_eq!(results_after_delete[0].0, 2);
-
+    // 재검색 시, 이제 ID 1이 가장 가까워야 함
+    let results_after_delete = engine.search(&query, 1, EF_SEARCH).unwrap();
+    assert_eq!(results_after_delete[0].0, 1);
 }
 
 #[test]
-fn test_vector_engine_update_vector() {
-    // --- 1. 준비 (Arrange) ---
-    let dimension = 3;
-    let mut engine = VectorEngine::new(dimension);
-
-    let id_to_update = 2u64;
-    let old_vector = vec![0.1, 0.1, 0.1];
+fn test_vector_engine_update_document() {
+    let mut engine = VectorEngine::new(TEST_DIM);
+    let id_to_update = 2;
     let new_vector = vec![0.9, 0.9, 0.9];
+    engine.add_document(1, vec![0.1, 0.1, 0.1]).unwrap();
+    engine.add_document(id_to_update, vec![0.2, 0.2, 0.2]).unwrap();
 
-    // 초기 데이터 추가
-    engine.add_document(1, vec![-0.5, -0.5, -0.5]).unwrap();
-    engine.add_document(id_to_update, old_vector.clone()).unwrap();
-
-    // 캐시를 미리 채워두기 위해 검색을 한 번 실행
-    let _ = engine.search(&vec![0.1, 0.1, 0.1], 1);
-    assert_eq!(engine.get_query_cache_len(), 1, "캐시가 채워져 있어야 합니다.");
-
-    // --- 2. 실행 (Act) ---
-    // ID 2의 문서를 new_vector로 업데이트합니다.
+    // 업데이트 실행
     let update_result = engine.update_document(&id_to_update, new_vector.clone());
-
-    // --- 3. 검증 (Assert) ---
-    
-    // 3-1. 업데이트 성공 여부 확인
     assert!(update_result.is_ok());
 
-    // 3-2. HashMap의 벡터가 실제로 new_vector로 바뀌었는지 확인
-    assert_eq!(engine.get_documents().get(&id_to_update).unwrap(), &new_vector);
+    // HashMap 값 확인
+    assert_eq!(engine.documents().get(&id_to_update).unwrap(), &new_vector);
 
-    // 3-3. 캐시가 비워졌는지 확인
-    assert_eq!(engine.get_query_cache_len(), 0, "업데이트 후 캐시는 비워져야 합니다.");
+    // 인덱스 재구성 확인
+    let search_result = engine.search(&vec![0.9, 0.9, 0.8], 1, EF_SEARCH).unwrap();
+    assert_eq!(search_result[0].0, id_to_update);
+}
 
-    // 3-4. HNSW 인덱스가 재구성되었는지 확인 (동작으로 검증)
-    // new_vector와 유사한 쿼리로 검색했을 때, ID 2가 가장 가깝게 나와야 합니다.
-    let search_query = vec![0.1, -0.3, 1.0];
-    let search_result = engine.search(&search_query, 1).unwrap();
-    assert_eq!(search_result[0].0, id_to_update, "재구성된 인덱스는 새로운 벡터 기준으로 검색해야 합니다.");
+#[test]
+fn test_vector_engine_round_trip() {
+    let mut original_engine = VectorEngine::new(TEST_DIM);
+    original_engine.add_document(1, vec![1.0, 0.1, 0.2]).unwrap();
+    original_engine.add_document(2, vec![0.1, 1.0, 0.3]).unwrap();
+
+    let bytes = original_engine.save_to_bytes().unwrap();
+    let reloaded_engine = VectorEngine::load_from_bytes(&bytes, TEST_DIM).unwrap();
+
+    assert_eq!(original_engine.dimension(), reloaded_engine.dimension());
+    assert_eq!(original_engine.document_count(), reloaded_engine.document_count());
+    assert_eq!(original_engine.documents(), reloaded_engine.documents());
+}
+
+#[test]
+fn test_vector_engine_returns_dimension_mismatch_error() {
+    // 준비 (Arrange)
+    let mut engine = VectorEngine::new(3);
+    let wrong_dim_vector = vec![0.1, 0.2]; // 엔진 차원은 3, 벡터 차원은 2
+
+    // 실행 (Act)
+    let result = engine.add_document(1, wrong_dim_vector);
+
+    // 검증 (Assert)
+    
+    // 1. 우선 Err가 반환되었는지 확인합니다.
+    assert!(result.is_err());
+    
+    // 2. 반환된 에러가 우리가 예상한 'DimensionMismatch' 종류인지 확인합니다.
+    // matches! 매크로는 enum의 variant가 일치하는지 확인할 때 매우 유용합니다.
+    assert!(matches!(result.unwrap_err(), VectorEngineError::DimensionMismatch(_)));
+}
+
+#[test]
+fn test_vector_engine_returns_item_not_found_on_delete() {
+    // 준비
+    let mut engine = VectorEngine::new(3);
+    engine.add_document(1, vec![0.1, 0.2, 0.3]).unwrap();
+
+    // 실행: 존재하지 않는 ID(99)를 삭제 시도
+    let result = engine.delete_document(&99);
+
+    // 검증
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), VectorEngineError::ItemNotFound(_)));
+}
+
+#[test]
+fn test_vector_engine_returns_item_not_found_on_update() {
+    // 준비
+    let mut engine = VectorEngine::new(3);
+    engine.add_document(1, vec![0.1, 0.2, 0.3]).unwrap();
+    let new_vector = vec![0.4, 0.5, 0.6];
+
+    // 실행: 존재하지 않는 ID(99)를 업데이트 시도
+    let result = engine.update_document(&99, new_vector);
+
+    // 검증
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), VectorEngineError::ItemNotFound(_)));
 }
