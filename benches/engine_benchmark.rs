@@ -1,102 +1,90 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use prost::Message;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use rust_vector_engine::models::VectorEngine; 
-use std::hint::black_box; // criterion::black_box 대신 표준 라이브러리 사용
+use rust_vector_engine::models::{
+    document::{Document, EngineState},
+    VectorEngine,
+};
+use std::hint::black_box;
 
+// 벤치마크에 사용할 상수 정의
 const DIMENSION: usize = 1536;
 const NUM_VECTORS: usize = 1000;
 
-/// 벤치마크용 랜덤 데이터를 생성하는 함수
-fn generate_random_data(num: usize) -> Vec<(u64, Vec<f32>)> {
+/// 벤치마크용 직렬화된 EngineState 바이트 데이터를 생성하는 함수
+fn get_serialized_data() -> Vec<u8> {
     let mut rng = StdRng::from_seed([0; 32]);
-    (0..num)
+    let documents: Vec<Document> = (0..NUM_VECTORS)
         .map(|i| {
-            let vector: Vec<f32> = (0..DIMENSION).map(|_| rng.r#gen::<f32>()).collect();
-            (i as u64, vector)
+            let vector: Vec<f32> = (0..DIMENSION).map(|_| rng.random::<f32>()).collect();
+            Document { id: i as u64, vector }
         })
-        .collect()
+        .collect();
+    
+    let state = EngineState {
+        format_version: 1,
+        documents,
+    };
+
+    let mut buf = Vec::new();
+    state.encode(&mut buf).unwrap();
+    buf
 }
 
 /// Criterion 벤치마크를 설정하고 실행하는 함수
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("VectorEngine Benchmarks");
-    group.sample_size(10); // 각 벤치마크의 샘플 수를 10으로 줄여서 실행 시간 단축
+    let mut group = c.benchmark_group("VectorEngine Realistic Scenarios");
+    group.sample_size(10);
 
-    // --- 1. Create: add_document 1,000개 실행 성능 측정 ---
-    group.bench_function("C: add_1000_docs", |b| {
-        let data = generate_random_data(NUM_VECTORS);
-        b.iter_with_setup(
-            || VectorEngine::new(DIMENSION),
-            |mut engine| {
-                for (id, vector) in &data {
-                    engine.add_document(black_box(*id), black_box(vector.clone())).unwrap();
-                }
-            },
-        );
-    });
-
-    // --- 2. Read: 1,000개 문서가 있는 상태에서 search 1회 실행 성능 측정 ---
-    group.bench_function("R: search_in_1000_docs", |b| {
-        let mut engine = VectorEngine::new(DIMENSION);
-        let data = generate_random_data(NUM_VECTORS);
-        for (id, vector) in data {
-            engine.add_document(id, vector).unwrap();
-        }
-        let query_vector = generate_random_data(1).pop().unwrap().1;
-        
+    // --- 시나리오 1: 초기 로딩 (Deserialization + Full Build) ---
+    group.bench_function("1_load_from_bytes_1000_docs", |b| {
+        // 미리 직렬화된 데이터를 한 번만 생성
+        let bytes = get_serialized_data();
+        // iter 안에서 load_from_bytes만 반복 측정
         b.iter(|| {
-            engine.search(black_box(&query_vector), black_box(10), black_box(30))
+            VectorEngine::load_from_bytes(black_box(&bytes), black_box(DIMENSION)).unwrap();
         });
     });
 
-    // --- 3. Update: 1,000개 문서 중 하나를 업데이트하는 성능 측정 ---
-    group.bench_function("U: update_doc_in_1000_docs", |b| {
-        let data = generate_random_data(NUM_VECTORS);
-        let new_vector = generate_random_data(1).pop().unwrap().1;
-        let update_id = (NUM_VECTORS / 2) as u64;
-
+    // --- 시나리오 2: 문서 1개 추가 및 재구성 (Incremental Add + Rebuild) ---
+    group.bench_function("2_add_and_rebuild_on_1000_docs", |b| {
+        let new_doc_id = (NUM_VECTORS + 1) as u64;
+        let new_vector: Vec<f32> = {
+            let mut rng = StdRng::from_seed([1; 32]);
+            (0..DIMENSION).map(|_| rng.random::<f32>()).collect()
+        };
+        
         // 매 측정마다 1000개의 문서가 있는 엔진을 새로 준비
         b.iter_with_setup(
             || {
-                let mut engine = VectorEngine::new(DIMENSION);
-                for (id, vector) in &data {
-                    engine.add_document(*id, vector.clone()).unwrap();
-                }
-                engine
+                let bytes = get_serialized_data();
+                VectorEngine::load_from_bytes(&bytes, DIMENSION).unwrap()
             },
-            // 준비된 엔진에서 update 메서드만 실행하여 시간 측정
+            // 준비된 엔진에 문서 1개만 추가하는 시간을 측정
             |mut engine| {
-                engine.update_document(black_box(&update_id), black_box(new_vector.clone()));
+                engine.add_document(black_box(new_doc_id), black_box(new_vector.clone())).unwrap();
             }
         );
     });
 
-
-    // --- 4. Delete: 1,000개 문서 중 하나를 삭제하는 성능 측정 ---
-    group.bench_function("D: delete_doc_in_1000_docs", |b| {
-        let data = generate_random_data(NUM_VECTORS);
-        let delete_id = (NUM_VECTORS / 2) as u64;
-
-        // 매 측정마다 1000개의 문서가 있는 엔진을 새로 준비
-        b.iter_with_setup(
-            || {
-                let mut engine = VectorEngine::new(DIMENSION);
-                for (id, vector) in &data {
-                    engine.add_document(*id, vector.clone()).unwrap();
-                }
-                engine
-            },
-            // 준비된 엔진에서 delete 메서드만 실행하여 시간 측정
-            |mut engine| {
-                engine.delete_document(black_box(&delete_id));
-            }
-        );
+    // --- 시나리오 3: 순수 검색 (Pure Search) ---
+    group.bench_function("3_search_in_1000_docs", |b| {
+        // 미리 1,000개의 문서가 채워진 엔진을 준비
+        let bytes = get_serialized_data();
+        let mut engine = VectorEngine::load_from_bytes(&bytes, DIMENSION).unwrap();
+        let query_vector: Vec<f32> = {
+            let mut rng = StdRng::from_seed([2; 32]);
+            (0..DIMENSION).map(|_| rng.random()).collect()
+        };
+        
+        // 준비된 엔진에서 search 메서드만 반복 측정
+        b.iter(|| {
+            engine.search(black_box(&query_vector), black_box(10))
+        });
     });
-
 
     group.finish();
 }
 
-// Criterion 벤치마크 실행을 위한 필수 매크로
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
